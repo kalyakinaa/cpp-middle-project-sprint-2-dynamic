@@ -293,3 +293,43 @@ TEST(ScanTest, InputWithNewline) {
     ASSERT_TRUE(result);
     EXPECT_EQ(std::get<0>(result->values()), 13);
 }
+
+TEST(ScanTest, UnsupportedTypeChar) {
+    auto result = stdx::scan<char>("n", "{}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, UnsupportedTypeBool) {
+    auto result = stdx::scan<bool>("true", "{}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, UnsupportedTypeLongDouble) {
+    auto result = stdx::scan<long double>("3.14", "{%f}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, ReferenceTypeInt) {
+    auto result = stdx::scan<int &>("13", "{}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, ReferenceTypeConstInt) {
+    auto result = stdx::scan<const int &>("13", "{}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, ReferenceTypeString) {
+    auto result = stdx::scan<std::string &>("number", "{%s}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, MixedSupportedAndUnsupported) {
+    auto result = stdx::scan<int, char>("13 n", "{} {}");
+    EXPECT_FALSE(result);
+}
+
+TEST(ScanTest, MixedSupportedAndReference) {
+    auto result = stdx::scan<int, int &>("13 14", "{} {}");
+    EXPECT_FALSE(result);
+}

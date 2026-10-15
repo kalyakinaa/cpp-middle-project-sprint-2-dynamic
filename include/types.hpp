@@ -17,12 +17,12 @@ using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 template <typename... Ts>
 class scan_result {
 public:
-    using storage_type = std::tuple<remove_cvref_t<Ts>...>;
+    using storage_type = std::tuple<Ts...>;
 
     explicit scan_result(storage_type values) : values_(std::move(values)) {}
 
-    const storage_type &values() const noexcept { return values_; }
-    storage_type &values() noexcept { return values_; }
+    [[nodiscard]] const storage_type &values() const noexcept { return values_; }
+    [[nodiscard]] storage_type &values() noexcept { return values_; }
 
 private:
     storage_type values_;
@@ -45,5 +45,19 @@ concept AllSupported = (SupportedType<Ts> && ...);
 
 template <typename... Ts>
 concept NoReferences = (NotReference<Ts> && ...);
+
+template <typename T>
+concept StringLike = std::same_as<remove_cvref_t<T>, std::string> || std::same_as<remove_cvref_t<T>, std::string_view>;
+
+template <typename T>
+concept SignedInteger = std::is_integral_v<remove_cvref_t<T>> && std::is_signed_v<remove_cvref_t<T>> &&
+                        !std::is_same_v<remove_cvref_t<T>, bool>;
+
+template <typename T>
+concept UnsignedInteger = std::is_integral_v<remove_cvref_t<T>> && std::is_unsigned_v<remove_cvref_t<T>> &&
+                          !std::is_same_v<remove_cvref_t<T>, bool>;
+
+template <typename T>
+concept FloatingPoint = std::is_floating_point_v<remove_cvref_t<T>>;
 
 }  // namespace stdx::details

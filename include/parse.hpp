@@ -15,7 +15,7 @@
 
 namespace stdx::details {
 
-constexpr std::string_view trim(std::string_view s) noexcept {
+[[nodiscard]] constexpr std::string_view trim(std::string_view s) noexcept {
     std::size_t b = 0;
     std::size_t e = s.size();
 
@@ -28,90 +28,111 @@ constexpr std::string_view trim(std::string_view s) noexcept {
     return s.substr(b, e - b);
 }
 
-template <typename T>
-std::expected<T, scan_error> parse_value_with_format(std::string_view input, std::string_view fmt) {
+template <StringLike T>
+[[nodiscard]] std::expected<T, scan_error> parse_value(std::string_view input, char spec) {
+    if (spec != 's') {
+        return std::unexpected(scan_error{"String type requires format specifier 's'"});
+    }
+    if constexpr (std::is_same_v<remove_cvref_t<T>, std::string>) {
+        return std::string(input);
+    } else {
+        return input;
+    }
+}
+
+template <SignedInteger T>
+[[nodiscard]] std::expected<T, scan_error> parse_value(std::string_view input, char spec) {
+    if (spec != 'd') {
+        return std::unexpected(scan_error{"Signed integer type requires 'd' specifier"});
+    }
     using CleanT = remove_cvref_t<T>;
 
-    input = trim(input);
-
-    if (!fmt.empty() && fmt[0] == '%') {
-        fmt = fmt.substr(1);
+    long long wide{};
+    auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), wide);
+    if (ec != std::errc{} || ptr != input.data() + input.size()) {
+        return std::unexpected(scan_error{"Failed to parse integer"});
     }
-
-    char spec = '\0';
-    if (fmt.empty()) {
-        if constexpr (std::is_same_v<CleanT, std::string> || std::is_same_v<CleanT, std::string_view>) {
-            spec = 's';
-        } else if constexpr (std::is_floating_point_v<CleanT>) {
-            spec = 'f';
-        } else if constexpr (std::is_integral_v<CleanT>) {
-            spec = std::is_signed_v<CleanT> ? 'd' : 'u';
-        } else {
-            return std::unexpected(scan_error{"Unsupported type"});
-        }
-    } else {
-        if (fmt.size() != 1) {
-            return std::unexpected(scan_error{"Invalid format specifier"});
-        }
-        spec = fmt[0];
+    if (wide < static_cast<long long>(std::numeric_limits<CleanT>::min()) ||
+        wide > static_cast<long long>(std::numeric_limits<CleanT>::max())) {
+        return std::unexpected(scan_error{"Integer out of range"});
     }
+    return static_cast<CleanT>(wide);
+}
 
-    if (spec == 's') {
-        if constexpr (std::is_same_v<CleanT, std::string>) {
-            return std::string(input);
-        } else if constexpr (std::is_same_v<CleanT, std::string_view>) {
-            return input;
-        } else {
-            return std::unexpected(scan_error{"Format specifier 's' requires string type"});
-        }
+template <UnsignedInteger T>
+[[nodiscard]] std::expected<T, scan_error> parse_value(std::string_view input, char spec) {
+    if (spec != 'u') {
+        return std::unexpected(scan_error{"Unsigned integer type requires 'u' specifier"});
     }
+    using CleanT = remove_cvref_t<T>;
 
-    if (spec != 'd' && spec != 'u' && spec != 'f') {
-        return std::unexpected(scan_error{"Unknown format specifier"});
+    unsigned long long wide{};
+    auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), wide);
+    if (ec != std::errc{} || ptr != input.data() + input.size()) {
+        return std::unexpected(scan_error{"Failed to parse integer"});
     }
+    if (wide > static_cast<unsigned long long>(std::numeric_limits<CleanT>::max())) {
+        return std::unexpected(scan_error{"Integer out of range"});
+    }
+    return static_cast<CleanT>(wide);
+}
 
-    if constexpr (std::is_same_v<CleanT, std::string> || std::is_same_v<CleanT, std::string_view>) {
-        return std::unexpected(scan_error{"String type requires format specifier 's'"});
-    } else if constexpr (std::is_integral_v<CleanT>) {
-        if (spec == 'u' && std::is_signed_v<CleanT>) {
-            return std::unexpected(scan_error{"Format specifier 'u' requires unsigned type"});
-        }
-        if (spec == 'd' && std::is_unsigned_v<CleanT>) {
-            return std::unexpected(scan_error{"Format specifier 'd' requires signed type"});
-        }
-        if (spec == 'f') {
-            return std::unexpected(scan_error{"Integer type requires 'd' or 'u' specifier"});
-        }
+template <FloatingPoint T>
+[[nodiscard]] std::expected<T, scan_error> parse_value(std::string_view input, char spec) {
+    if (spec != 'f') {
+        return std::unexpected(scan_error{"Floating point type requires 'f' specifier"});
+    }
+    using CleanT = remove_cvref_t<T>;
 
-        using WideT = std::conditional_t<std::is_signed_v<CleanT>, long long, unsigned long long>;
-        WideT wide{};
-        auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), wide);
-        if (ec != std::errc{} || ptr != input.data() + input.size()) {
-            return std::unexpected(scan_error{"Failed to parse integer"});
-        }
-        if (wide < static_cast<WideT>(std::numeric_limits<CleanT>::min()) ||
-            wide > static_cast<WideT>(std::numeric_limits<CleanT>::max())) {
-            return std::unexpected(scan_error{"Integer out of range"});
-        }
-        return static_cast<CleanT>(wide);
-    } else if constexpr (std::is_floating_point_v<CleanT>) {
-        if (spec != 'f') {
-            return std::unexpected(scan_error{"Floating point type requires 'f' specifier"});
-        }
+    CleanT value{};
+    auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), value);
+    if (ec != std::errc{} || ptr != input.data() + input.size()) {
+        return std::unexpected(scan_error{"Failed to parse floating point"});
+    }
+    return value;
+}
 
-        CleanT value{};
-        auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), value);
-        if (ec != std::errc{} || ptr != input.data() + input.size()) {
-            return std::unexpected(scan_error{"Failed to parse floating point"});
-        }
-        return value;
-    } else {
+template <typename T>
+[[nodiscard]] std::expected<T, scan_error> parse_value_with_format(std::string_view input, std::string_view fmt) {
+    using CleanT = remove_cvref_t<T>;
+
+    if constexpr (!SupportedType<T>) {
         return std::unexpected(scan_error{"Unsupported type"});
+    } else {
+        input = trim(input);
+
+        if (!fmt.empty() && fmt[0] == '%') {
+            fmt = fmt.substr(1);
+        }
+
+        char spec = '\0';
+        if (fmt.empty()) {
+            if constexpr (StringLike<CleanT>) {
+                spec = 's';
+            } else if constexpr (FloatingPoint<CleanT>) {
+                spec = 'f';
+            } else if constexpr (SignedInteger<CleanT>) {
+                spec = 'd';
+            } else if constexpr (UnsignedInteger<CleanT>) {
+                spec = 'u';
+            }
+        } else {
+            if (fmt.size() != 1) {
+                return std::unexpected(scan_error{"Invalid format specifier"});
+            }
+            spec = fmt[0];
+        }
+
+        if (spec != 'd' && spec != 'u' && spec != 'f' && spec != 's') {
+            return std::unexpected(scan_error{"Unknown format specifier"});
+        }
+
+        return parse_value<T>(input, spec);
     }
 }
 
 template <typename... Ts>
-std::expected<std::pair<std::vector<std::string_view>, std::vector<std::string_view>>, scan_error>
+[[nodiscard]] std::expected<std::pair<std::vector<std::string_view>, std::vector<std::string_view>>, scan_error>
 parse_sources(std::string_view input, std::string_view format) {
     std::vector<std::string_view> format_parts;
     std::vector<std::string_view> input_parts;
@@ -155,16 +176,6 @@ parse_sources(std::string_view input, std::string_view format) {
         input_parts.emplace_back(input);
     }
     return std::pair{format_parts, input_parts};
-}
-
-template <typename T>
-std::expected<T, scan_error> parse_value(std::string_view input) {
-    return parse_value_with_format<T>(input, std::string_view{});
-}
-
-template <typename T>
-std::expected<T, scan_error> parse_value(std::string_view input, std::string_view fmt) {
-    return parse_value_with_format<T>(input, fmt);
 }
 
 }  // namespace stdx::details
